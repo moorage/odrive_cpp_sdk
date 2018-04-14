@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<package>
+  <name>odrive_cpp_sdk</name>
+  <version>0.0.1</version>
+  <description>The SDK for Odrive. Provides functions to communicate with the device.</description>
+  <author>Matt Moore</author>
+  <maintainer email="matt@greppy.co"></maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <build_depend>roscpp</build_depend>
+
+  <run_depend>roscpp</run_depend>
+
+  <export>
+  </export>
+</package>
