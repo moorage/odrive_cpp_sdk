@@ -2,27 +2,32 @@
 
 This is the simplest C++ implementation of ODrive communication methods possible.
 
-It requires `ascii` and the older `ascii` api flashed on the odrive in your `tup.config`, like such:
+Much of the USB packet encoding / decoding is inspired by https://github.com/tokol0sh/Odrive_USB
+
+It requires USB `native` and UART `native` protocol flashed on the odrive in your `tup.config`, like such:
 
 ```
 CONFIG_BOARD_VERSION=v3.4-24V
-CONFIG_USB_PROTOCOL=ascii
-CONFIG_UART_PROTOCOL=ascii
+CONFIG_USB_PROTOCOL=native
+CONFIG_UART_PROTOCOL=native
 CONFIG_STEP_DIR=n
 ```
 
-The simplest possible c++ program to run it, as an example (assuming 2 motors), is:
+If you'd like to use the legacy ascii protocol, there is a legacy implementation of this SDK at https://github.com/moorage/odrive_cpp_sdk/tree/legacy-ascii-protocol
+
+The simplest possible c++ program to run this sdk, as an example (assuming 2 motors), is:
 
 ```cpp
 #include <iostream>
-#include "odrive_cpp_sdk.h"
+#include "odrive_cpp_sdk/odrive_cpp_sdk.h"
 
 int main(int argc, const char * argv[]) {
-    std::string odrive_serial_numbers[1] = {"0x303339373235510a330045"};
-    std::string odrive_serial_numbers_map[2] = {"0x303339373235510a330045","0x303339373235510a330045"};
-    int16_t zeroeth_radian_in_encoder_ticks_[2] = { -2, 0 };
+    std::string odrive_serial_numbers[1] = {"53202722976285"};
+    std::string odrive_serial_numbers_map[2] = {"53202722976285","53202722976285"};
+    int16_t zeroeth_radian_in_encoder_ticks_[2] = { -200, 0 };
 
     bool odrive_position_per_motor[2] = {false, true};
+    // odrive_encoder_ticks_per_radian_per_motor lets us account for any gear reductions...
     float odrive_encoder_ticks_per_radian_per_motor[2] = { 57.2958 * (2048 * 4) / 360.0, 57.2958 * (2048 * 4) / 360.0 };
     odrive::CppSdk odrive_cpp_sdk(
         odrive_serial_numbers,
