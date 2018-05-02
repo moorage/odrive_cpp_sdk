@@ -149,6 +149,7 @@ int CppSdk::readCurrentMotorPositions(double* axes_positions_in_radians_array) {
             std::cerr << "Couldn't send `" << std::to_string(cmd) << "` to '" << odrive_serial_numbers_[handle_index] << "': `" << result << "` (see prior error message)" << std::endl;
             return ODRIVE_SDK_UNEXPECTED_RESPONSE;
         }
+        
         axes_positions_in_radians_array[i] =  (read_encoder_ticks / (double)encoder_ticks_per_radian_[i]) - (zeroeth_radian_in_encoder_ticks_[i] / (double)encoder_ticks_per_radian_[i]); // TODO Check math
     }
     return ODRIVE_SDK_COMM_SUCCESS;
@@ -164,19 +165,13 @@ int CppSdk::checkErrors(uint8_t* error_codes_array) {
         uint8_t handle_index = motor_to_odrive_handle_index_[i];
         cmd = motor_position_map_[i] ? ODRIVE_SDK_GET_MOTOR_1_ERROR : ODRIVE_SDK_GET_MOTOR_0_ERROR;
 
-        short motor_error_output_wide;
-        int result = odriveEndpointGetShort(odrive_handles_[handle_index], cmd, motor_error_output_wide);
+        uint8_t motor_error_output;
+        int result = odriveEndpointGetUInt8(odrive_handles_[handle_index], cmd, motor_error_output);
         if (result != LIBUSB_SUCCESS) {
             std::cerr << "CppSdk::checkErrors couldn't send `" << std::to_string(cmd) << "` to '" << odrive_serial_numbers_[handle_index] << "': `" << result << "` (see prior error message)" << std::endl;
             return ODRIVE_SDK_UNEXPECTED_RESPONSE;
         }
-
-        if (motor_error_output_wide <= UINT8_MAX && motor_error_output_wide >= 0) {
-            error_codes_array[i] = (uint8_t) motor_error_output_wide;
-        } else {
-            std::cerr << "CppSdk::checkErrors in sending `" << std::to_string(cmd) << "` to '" << odrive_serial_numbers_[handle_index] << "' got unexpectedly large result: `" << std::to_string(motor_error_output_wide) << "`." << std::endl;
-            return ODRIVE_SDK_UNEXPECTED_RESPONSE;
-        }
+        error_codes_array[i] = motor_error_output;
     }
     return ODRIVE_SDK_COMM_SUCCESS;
 }
@@ -261,7 +256,7 @@ int CppSdk::odriveEndpointRequest(libusb_device_handle* handle, int endpoint_id,
     // Send the packet
     commBuffer packet = createODrivePacket(seq_no, endpoint_id, length, payload);
 
-    int result = libusb_bulk_transfer(handle, (ODRIVE_SDK_WRITING_ENDPOINT), packet.data(), packet.size(), &sent_bytes, 0);
+    int result = libusb_bulk_transfer(handle, ODRIVE_SDK_WRITING_ENDPOINT, packet.data(), packet.size(), &sent_bytes, 0);
     if (result != LIBUSB_SUCCESS) {
         std::cerr << "Could not call libusb_bulk_transfer for writing: " << result << " - " << libusb_error_name(result) << strerror(errno) << std::endl;
         return result;
@@ -271,7 +266,7 @@ int CppSdk::odriveEndpointRequest(libusb_device_handle* handle, int endpoint_id,
 
     if (ack) {
       // Immediatly wait for response from Odrive and check if ack (if we asked for one)
-      result = libusb_bulk_transfer(handle, (ODRIVE_SDK_READING_ENDPOINT), receive_bytes, ODRIVE_SDK_MAX_BYTES_TO_RECEIVE, &received_bytes, ODRIVE_SDK_TIMEOUT);
+      result = libusb_bulk_transfer(handle, ODRIVE_SDK_READING_ENDPOINT, receive_bytes, ODRIVE_SDK_MAX_BYTES_TO_RECEIVE, &received_bytes, ODRIVE_SDK_TIMEOUT);
       if (result != LIBUSB_SUCCESS) {
           std::cerr << "Could not call libusb_bulk_transfer for reading: " << result << " - " << libusb_error_name(result) << strerror(errno) << std::endl;
           return result;
@@ -281,8 +276,10 @@ int CppSdk::odriveEndpointRequest(libusb_device_handle* handle, int endpoint_id,
           receive_buffer.push_back(receive_bytes[i]);
       }
 
-      commBuffer::iterator it = receive_buffer.begin();
-      received_payload = decodeODrivePacket(it, received_seq_no, receive_buffer);
+      received_payload = decodeODrivePacket(receive_buffer, received_seq_no, receive_buffer);
+      if (received_seq_no != seq_no) {
+          std::cerr << "[ERROR] Recieved packet from odrive for sequence number " << std::to_string(received_seq_no) << " but was expecting to recieve reply for sequence number " << std::to_string(seq_no) << ".  Sequence ordering is not implemented yet!!!" << std::endl;
+      }
 
       // return the response payload
       received_length = received_payload.size();
@@ -291,7 +288,7 @@ int CppSdk::odriveEndpointRequest(libusb_device_handle* handle, int endpoint_id,
     return LIBUSB_SUCCESS;
 }
 
-int CppSdk::odriveEndpointGetShort(libusb_device_handle* handle, int endpoint_id, short& value) {
+int CppSdk::odriveEndpointGetUInt8(libusb_device_handle* handle, int endpoint_id, uint8_t& value) {
     commBuffer send_payload;
     commBuffer receive_payload;
     int received_length;
@@ -299,8 +296,23 @@ int CppSdk::odriveEndpointGetShort(libusb_device_handle* handle, int endpoint_id
     if (result != LIBUSB_SUCCESS) {
         return result;
     }
-    commBuffer::iterator it = receive_payload.begin();
-    readShortFromCommBuffer(it, value);
+
+    deserializeCommBufferUInt8(receive_payload, value);
+
+    return LIBUSB_SUCCESS;
+}
+
+int CppSdk::odriveEndpointGetShort(libusb_device_handle* handle, int endpoint_id, short& value) {
+    commBuffer send_payload;
+    commBuffer receive_payload;
+    int received_length;
+    int result = odriveEndpointRequest(handle, endpoint_id, receive_payload, received_length, send_payload, 1, 2);
+    if (result != LIBUSB_SUCCESS) {
+        return result;
+    }
+
+    readShortFromCommBuffer(receive_payload, value);
+
     return LIBUSB_SUCCESS;
 }
 int CppSdk::odriveEndpointGetInt(libusb_device_handle* handle, int endpoint_id, int& value) {
@@ -358,9 +370,17 @@ void CppSdk::appendShortToCommBuffer(commBuffer& buf, const short value) {
     buf.push_back((value >> 8) & 0xFF);
 }
 
-void CppSdk::readShortFromCommBuffer(commBuffer::iterator& it, short& value) {
-    value = *it++;
-    value |= (*it++) << 8;
+
+void CppSdk::readShortFromCommBuffer(commBuffer& byte_array, short& value) {
+  //TODO: Check that -ve values are being converted correctly.
+  value = 0;
+  for(int i = 0; i < sizeof(short); ++i) {
+     value <<= 8;
+     value |= byte_array[i];
+  }
+
+  //Convert the byte array to little endian. It's currently being read in as a bigendian.
+  value = be16toh(value);
 }
 
 
@@ -400,6 +420,10 @@ void CppSdk::deserializeCommBufferUInt64(commBuffer& v, uint64_t& value) {
   value = be64toh(value);
 }
 
+void CppSdk::deserializeCommBufferUInt8(commBuffer& v, uint8_t& value) {
+  value = v[0];
+}
+
 commBuffer CppSdk::createODrivePacket(short seq_no, int endpoint_id, short response_size, const commBuffer& input) {
     commBuffer packet;
     short crc = 0;
@@ -422,11 +446,12 @@ commBuffer CppSdk::createODrivePacket(short seq_no, int endpoint_id, short respo
     return packet;
 }
 
-commBuffer CppSdk::decodeODrivePacket(commBuffer::iterator& it, short& seq_no, commBuffer& received_packet) {
+commBuffer CppSdk::decodeODrivePacket(commBuffer& buf, short& seq_no, commBuffer& received_packet) {
     commBuffer payload;
-    readShortFromCommBuffer(it, seq_no);
-    while (it != received_packet.end()) {
-        payload.push_back(*it++);
+    readShortFromCommBuffer(buf, seq_no); // reads 2 bytes so start next for loop at 2
+    seq_no &= 0x7fff;
+    for (commBuffer::size_type i = 2; i < buf.size(); ++i) {
+        payload.push_back(buf[i]);
     }
     return payload;
 }

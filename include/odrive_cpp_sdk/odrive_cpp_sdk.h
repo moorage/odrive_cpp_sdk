@@ -92,18 +92,20 @@ namespace odrive
         int odriveEndpointRequest(libusb_device_handle* handle, int endpoint_id, commBuffer& received_payload, int& received_length, const commBuffer payload, const int ack, const int length);
         int odriveEndpointGetShort(libusb_device_handle* handle, int endpoint_id, short& value);
         int odriveEndpointGetInt(libusb_device_handle* handle, int endpoint_id, int& value);
+        int odriveEndpointGetUInt8(libusb_device_handle* handle, int endpoint_id, uint8_t& value);
         int odriveEndpointGetUInt64(libusb_device_handle* handle, int endpoint_id, uint64_t& value);
         int odriveEndpointSetInt(libusb_device_handle* handle, int endpoint_id, const int& value);
         int odriveEndpointSetFloat(libusb_device_handle* handle, int endpoint_id, const float& value);
         void serializeCommBufferInt(commBuffer& buf, const int& value);
         void serializeCommBufferFloat(commBuffer& buf, const float& value);
-        void deserializeCommBufferInt(commBuffer& it, int& value);
+        void deserializeCommBufferInt(commBuffer& buf, int& value);
         void appendShortToCommBuffer(commBuffer& buf, const short value);
-        void readShortFromCommBuffer(commBuffer::iterator& it, short& value);
-        void deserializeCommBufferUInt64(commBuffer& it, uint64_t& value);
+        void readShortFromCommBuffer(commBuffer& buf, short& value);
+        void deserializeCommBufferUInt64(commBuffer& buf, uint64_t& value);
+        void deserializeCommBufferUInt8(commBuffer& buf, uint8_t& value);
 
         commBuffer createODrivePacket(short seq_no, int endpoint, short response_size, const commBuffer& payload_ref);
-        commBuffer decodeODrivePacket(commBuffer::iterator& it, short& seq_no, commBuffer& received_packet);
+        commBuffer decodeODrivePacket(commBuffer& buf, short& seq_no, commBuffer& received_packet);
     };
 }
 
