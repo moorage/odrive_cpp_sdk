@@ -6,7 +6,6 @@
 #include <string>
 #include <vector>
 #include <libusb-1.0/libusb.h>
-#include <ros/ros.h>
 #include <endian.h>
 
 typedef std::vector<uint8_t> commBuffer;
@@ -57,6 +56,7 @@ namespace odrive
                const std::string* motor_to_odrive_serial_number_map,
                const bool* motor_position_map, // false = slot 0, true = slot 1
                const float* encoder_ticks_per_radian,
+               const bool* motor_relative_to_prior_motor, // true if there is influence, like a belt drive
                const uint8_t num_motors
                );
         ~CppSdk();
@@ -76,6 +76,7 @@ namespace odrive
         float* encoder_ticks_per_radian_;
         int16_t* zeroeth_radian_in_encoder_ticks_;
         bool* motor_position_map_;
+        bool* motor_relative_to_prior_motor_;
 
         // saved for use between creation and init
         std::string* odrive_serial_numbers_;

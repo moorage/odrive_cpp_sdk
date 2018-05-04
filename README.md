@@ -27,6 +27,7 @@ int main(int argc, const char * argv[]) {
     int16_t zeroeth_radian_in_encoder_ticks_[2] = { -200, 0 };
 
     bool odrive_position_per_motor[2] = {false, true};
+    bool motor_relative_to_prior_motor[2] = {false, false};
     // odrive_encoder_ticks_per_radian_per_motor lets us account for any gear reductions...
     float odrive_encoder_ticks_per_radian_per_motor[2] = { 57.2958 * (2048 * 4) / 360.0, 57.2958 * (2048 * 4) / 360.0 };
     odrive::CppSdk odrive_cpp_sdk(
@@ -35,6 +36,7 @@ int main(int argc, const char * argv[]) {
         odrive_serial_numbers_map,
         odrive_position_per_motor,
         odrive_encoder_ticks_per_radian_per_motor,
+        motor_relative_to_prior_motor,
         2
     );
     std::cout << "odrive_cpp_sdk constructed" << std::endl;

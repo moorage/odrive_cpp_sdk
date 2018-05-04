@@ -7,6 +7,7 @@ CppSdk::CppSdk(const std::string* odrive_serial_numbers,
                const std::string* motor_to_odrive_serial_number_map,
                const bool* motor_position_map, // false = slot 0, true = slot 1
                const float* encoder_ticks_per_radian,
+               const bool* motor_relative_to_prior_motor, // false = motors do not influence eachother, true = this motor poisition is subtracted from the prior one
                const uint8_t num_motors) {
     // read settings
     num_odrives_ = num_odrives;
@@ -22,6 +23,10 @@ CppSdk::CppSdk(const std::string* odrive_serial_numbers,
     motor_position_map_ = new bool[num_motors]();
     for (uint8_t i = 0; i < num_motors; ++i) {
         motor_position_map_[i] = motor_position_map[i];
+    }
+    motor_relative_to_prior_motor_ = new bool[num_motors]();
+    for (uint8_t i = 0; i < num_motors; ++i) {
+        motor_relative_to_prior_motor_[i] = motor_relative_to_prior_motor[i];
     }
 
     // saved for use between creation and init
@@ -59,6 +64,7 @@ CppSdk::~CppSdk() {
     if (motor_position_map_) delete [] motor_position_map_;
     if (odrive_serial_numbers_) delete [] odrive_serial_numbers_;
     if (motor_to_odrive_serial_number_map_) delete [] motor_to_odrive_serial_number_map_;
+    if (motor_relative_to_prior_motor_) delete [] motor_relative_to_prior_motor_;
 
     // usb
     if (odrive_handles_) delete [] odrive_handles_;
@@ -118,7 +124,11 @@ int CppSdk::setGoalMotorPositions(const double* axes_positions_in_radians_array)
 
     int cmd;
     for (uint8_t i = 0; i < num_motors_; ++i) {
-        float position_in_ticks = (int) (zeroeth_radian_in_encoder_ticks_[i] + (axes_positions_in_radians_array[i] * encoder_ticks_per_radian_[i]));
+        double target_ticks = axes_positions_in_radians_array[i] * encoder_ticks_per_radian_[i];
+        if (i != 0 && motor_relative_to_prior_motor_[i]) {
+          target_ticks = (axes_positions_in_radians_array[i] - axes_positions_in_radians_array[i-1] /* * encoder_ticks_per_radian_[i-1] */) * encoder_ticks_per_radian_[i];
+        }
+        float position_in_ticks = (int) (zeroeth_radian_in_encoder_ticks_[i] + target_ticks);
 
         uint8_t handle_index = motor_to_odrive_handle_index_[i];
         cmd = motor_position_map_[i] ? ODRIVE_SDK_SET_GOAL_1_CMD : ODRIVE_SDK_SET_GOAL_0_CMD;
@@ -149,8 +159,14 @@ int CppSdk::readCurrentMotorPositions(double* axes_positions_in_radians_array) {
             std::cerr << "Couldn't send `" << std::to_string(cmd) << "` to '" << odrive_serial_numbers_[handle_index] << "': `" << result << "` (see prior error message)" << std::endl;
             return ODRIVE_SDK_UNEXPECTED_RESPONSE;
         }
-        
-        axes_positions_in_radians_array[i] =  (read_encoder_ticks / (double)encoder_ticks_per_radian_[i]) - (zeroeth_radian_in_encoder_ticks_[i] / (double)encoder_ticks_per_radian_[i]); // TODO Check math
+
+        // NOTE!  THIS RELIES ON THE AXIS POSITIONS BEING READ IN ORDER; THAT axes_positions_in_radians_array[i-1] WAS READ FROM ODRIVE ALREADY
+        double interpreted_radians = read_encoder_ticks / (double)encoder_ticks_per_radian_[i];
+        if (i != 0 && motor_relative_to_prior_motor_[i]) {
+          interpreted_radians = axes_positions_in_radians_array[i-1] + (read_encoder_ticks / (double)encoder_ticks_per_radian_[i]);
+        }
+
+        axes_positions_in_radians_array[i] =  interpreted_radians - (zeroeth_radian_in_encoder_ticks_[i] / (double)encoder_ticks_per_radian_[i]); // TODO Check math
     }
     return ODRIVE_SDK_COMM_SUCCESS;
 }
@@ -443,6 +459,7 @@ commBuffer CppSdk::createODrivePacket(short seq_no, int endpoint_id, short respo
     }
 
     appendShortToCommBuffer(packet, crc);
+
     return packet;
 }
 
