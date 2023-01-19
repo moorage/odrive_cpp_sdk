@@ -1,4 +1,6 @@
 #include "odrive_cpp_sdk/odrive_cpp_sdk.h"
+#include <algorithm>
+#include <cstring>
 
 using namespace odrive;
 
@@ -218,7 +220,7 @@ int CppSdk::initUSBHandlesBySNs() {
             } else if (libusb_kernel_driver_active(device_handle, 0) && ( (result = libusb_detach_kernel_driver(device_handle, 0)) != LIBUSB_SUCCESS )) { // detach kernel driver if necessary
                 std::cerr << "Could not call libusb_detach_kernel_driver: " << result << " - " << libusb_error_name(result) << std::endl;
             } else if ( (result = libusb_claim_interface(device_handle, 0)) !=  LIBUSB_SUCCESS ) {
-              std::cerr << "Could not call libusb_claim_interface: " << result << " - " << libusb_error_name(result) << ": " << strerror(errno) << std::endl;
+              std::cerr << "Could not call libusb_claim_interface: " << result << " - " << libusb_error_name(result) << ": " << std::strerror(errno) << std::endl;
               libusb_close(device_handle);
             } else {
                 bool attached_to_handle = false;
@@ -274,7 +276,7 @@ int CppSdk::odriveEndpointRequest(libusb_device_handle* handle, int endpoint_id,
 
     int result = libusb_bulk_transfer(handle, ODRIVE_SDK_WRITING_ENDPOINT, packet.data(), packet.size(), &sent_bytes, 0);
     if (result != LIBUSB_SUCCESS) {
-        std::cerr << "Could not call libusb_bulk_transfer for writing: " << result << " - " << libusb_error_name(result) << strerror(errno) << std::endl;
+        std::cerr << "Could not call libusb_bulk_transfer for writing: " << result << " - " << libusb_error_name(result) << std::strerror(errno) << std::endl;
         return result;
     } else if (packet.size() != sent_bytes) {
         std::cerr << "Could not call libusb_bulk_transfer: only wrote " << std::to_string(sent_bytes) << " of " << std::to_string(packet.size()) << " bytes (wanted to send `" << packet.data() << "`)" << std::endl;
@@ -284,7 +286,7 @@ int CppSdk::odriveEndpointRequest(libusb_device_handle* handle, int endpoint_id,
       // Immediatly wait for response from Odrive and check if ack (if we asked for one)
       result = libusb_bulk_transfer(handle, ODRIVE_SDK_READING_ENDPOINT, receive_bytes, ODRIVE_SDK_MAX_BYTES_TO_RECEIVE, &received_bytes, ODRIVE_SDK_TIMEOUT);
       if (result != LIBUSB_SUCCESS) {
-          std::cerr << "Could not call libusb_bulk_transfer for reading: " << result << " - " << libusb_error_name(result) << strerror(errno) << std::endl;
+          std::cerr << "Could not call libusb_bulk_transfer for reading: " << result << " - " << libusb_error_name(result) << std::strerror(errno) << std::endl;
           return result;
       }
 
